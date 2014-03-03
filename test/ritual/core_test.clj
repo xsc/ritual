@@ -27,6 +27,7 @@
   (fact "about creating/inserting data."
         (swap! db people :people) => @db
         (db/query @db "select count(*) as count from people") => [{:count 2}]
+        (db/query @db "select * from people" :row-fn (juxt :id :name :address)) => (contains #{[1234 "Me" nil] [5678 "You" "Here"]})
         (swap! db cleanup) => @db
         (db/query @db "select count(*) as count from people") => (throws Exception #"does not exist"))
 
