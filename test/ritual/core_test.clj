@@ -39,6 +39,15 @@
         (db/query @db "select count(*) as count from people") => (throws Exception #"does not exist")
         (db/query @db "select count(*) as count from other_people") => (throws Exception #"does not exist"))
 
+  (with-state-changes [(before :facts (swap! db people :people :insert? false))
+                       (after :facts (swap! db cleanup))]
+    (fact "about insert without creating/dropping a table"
+          (let [db' (people @db :people :create? false)]
+            db' => @db
+            (db/query db' "select count(*) as count from people") => [{:count 2}]
+            (cleanup db') => db'
+            (db/query db' "select count(*) as count from people") => [{:count 0}])))
+
   (with-state-changes [(before :facts (swap! db people :people))
                        (after :facts (swap! db cleanup))]
     (fact "about snapshot creation."

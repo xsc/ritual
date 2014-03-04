@@ -11,7 +11,13 @@
     (-> ^String (if (or (symbol? s) (keyword? s))
                   (name s)
                   (str s))
-        (.replace "-" "_"))))
+        (.replace "-" "_")
+        (clojure.string/lower-case))))
+
+(defn keywordize
+  "Convert string/symbol/keyword to sqlized keyword."
+  [k]
+  (keyword (sqlize k)))
 
 ;; ## Table Fixtures
 
@@ -74,9 +80,12 @@
 
 (defn- attach-table-metadata
   "Attach table metadata."
-  [db-spec table-key primary-key columns]
-  (->> {:primary-key primary-key
-        :columns columns}
+  [db-spec table-key primary-key inserted-rows columns {:keys [create? insert?]}]
+  (->> {:primary-key (keywordize primary-key)
+        :inserted-rows inserted-rows
+        :columns (mapv keywordize columns)
+        :create? create?
+        :insert? insert?}
        (vary-meta db-spec assoc-in [::tables table-key])))
 
 (defn- table-metadata
@@ -90,26 +99,47 @@
    table. It will return a database spec that can be used to cleanup any created data."
   [data & {:keys [primary-key defaults types] :as options}]
   (let [columns (infer-columns data primary-key)
+        inserted-rows (mapv #(get % primary-key) data)
         create! (->create-table-function data columns options)
         insert! (->insert-function columns data)]
-    (fn [db-spec table-key
-         & {:keys [fresh? insert?]
-            :or {fresh? true insert? true}}]
-      (let [table (sqlize table-key)]
-        (when fresh?
+    (fn [db-spec table-key & {:keys [create? insert?] :or {create? true insert? true}}]
+      (let [table (sqlize table-key)
+            opts {:create? create? :insert? insert?}]
+        (when create?
           (drop! db-spec table)
           (create! db-spec table))
         (when insert?
           (insert! db-spec table))
-        (attach-table-metadata db-spec table-key primary-key columns)))))
+        (attach-table-metadata
+          db-spec table-key primary-key
+          inserted-rows columns opts)))))
 
 ;; ## Cleanup
+
+(defn- delete-by-primary-key!
+  "Delete previously inserted values."
+  [db-spec table primary-key values]
+  (try
+    (db/execute! db-spec
+                 (vec
+                   (list*
+                     (format "DELETE FROM %s WHERE %s IN (%s)"
+                             (sqlize table)
+                             (sqlize primary-key)
+                             (->> (repeat (count values) "?")
+                                  (clojure.string/join ",")))
+                     values)))
+    (catch Throwable _
+      (prn _))))
 
 (defn cleanup
   "Drop all created tables."
   [db-spec]
-  (doseq [table-key (keys (::tables (meta db-spec)))]
-    (drop! db-spec table-key))
+  (doseq [[table-key {:keys [primary-key inserted-rows create? insert?]}]
+          (::tables (meta db-spec))]
+    (cond create?  (drop! db-spec table-key)
+          insert?  (delete-by-primary-key! db-spec table-key primary-key inserted-rows)
+          :else nil))
   (vary-meta db-spec dissoc ::tables))
 
 ;; ## Snapshot Mechanism
@@ -134,37 +164,68 @@
                 (clojure.string/join ","))]
     [pk (sha1 cs)]))
 
+(defn- columns-or-meta
+  "Create a seq of columns, either using the seq/primary-key supplied or using the
+   given database spec's metadata."
+  [db-spec table columns primary-key]
+  (->> (or columns
+           (table-metadata db-spec table :columns))
+       (cons primary-key)
+       (map keywordize)))
+
+(defn- primary-key-or-meta
+  [db-spec table columns primary-key]
+  (keywordize
+    (or primary-key
+        (table-metadata db-spec table :primary-key)
+        (first columns))))
+
+(defn- query-all
+  "Get all elements of a specific table, processing the single rows/the result using the
+   given function."
+  [row-fn result-fn db-spec table columns primary-key]
+  (let [primary-key (primary-key-or-meta db-spec table columns primary-key)
+        columns (columns-or-meta db-spec table columns primary-key)]
+    (assert (seq columns) "no valid columns given.")
+    (assert primary-key "no valid primary key given.")
+    (db/query db-spec (->select-query table columns)
+              :row-fn        #(row-fn columns primary-key %)
+              :identifiers   keywordize
+              :result-set-fn result-fn)))
+
 (defn snapshot
   "Create snapshot of a specific table."
-  ([db-spec table]
-   (->> (table-metadata db-spec table :columns)
-        (snapshot db-spec table)))
-  ([db-spec table columns]
-   (->> (or (table-metadata db-spec table :primary-key) (first columns))
-        (snapshot db-spec table columns)))
-  ([db-spec table columns primary-key]
-   (let [columns (cons primary-key columns)]
-     (assert (seq columns) "no valid columns given.")
-     (assert primary-key "no valid primary key given.")
-     (->> (db/query db-spec (->select-query table columns)
-                    :row-fn    #(->snapshot-pair columns primary-key %)
-                    :result-fn #(into {} %))
-          (into {})))))
+  [db-spec table & [columns primary-key]]
+  (query-all
+    ->snapshot-pair
+    #(into {} %)
+    db-spec table columns primary-key))
+
+(defn dump
+  "Create dump of a specific table."
+  [db-spec table & [columns primary-key]]
+  (query-all
+    (fn [_ primary-key row]
+      [(get row primary-key) row])
+    #(into {} %)
+    db-spec table columns primary-key))
 
 (defn diff
   "Compare two snapshots."
-  [snapshot-a snapshot-b]
-  (letfn [(lazy-diff [sa sb]
-            (lazy-seq
-              (cond (empty? sa) (map #(vector :insert (first %)) sb)
-                    (empty? sb) (map #(vector :delete (first %)) sa)
-                    :else (let [[[ka ha] & ra] sa
-                                [[kb hb] & rb] sb
-                                c (compare ka kb)]
-                            (cond (neg? c) (cons [:delete ka] (lazy-diff ra sb))
-                                  (pos? c) (cons [:insert kb] (lazy-diff sa rb))
-                                  (= ha hb) (lazy-diff ra rb)
-                                  :else (cons [:update ka] (lazy-diff ra rb)))))))]
-    (lazy-diff
-      (sort-by first snapshot-a)
-      (sort-by first snapshot-b))))
+  ([snapshot-a snapshot-b]
+   (diff compare snapshot-a snapshot-b))
+  ([primary-key-comp snapshot-a snapshot-b]
+   (letfn [(lazy-diff [sa sb]
+             (lazy-seq
+               (cond (empty? sa) (map #(vector :insert (first %)) sb)
+                     (empty? sb) (map #(vector :delete (first %)) sa)
+                     :else (let [[[ka ha] & ra] sa
+                                 [[kb hb] & rb] sb
+                                 c (primary-key-comp ka kb)]
+                             (cond (neg? c) (cons [:delete ka] (lazy-diff ra sb))
+                                   (pos? c) (cons [:insert kb] (lazy-diff sa rb))
+                                   (= ha hb) (lazy-diff ra rb)
+                                   :else (cons [:update ka] (lazy-diff ra rb)))))))]
+     (lazy-diff
+       (sort-by first snapshot-a)
+       (sort-by first snapshot-b)))))
