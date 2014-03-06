@@ -93,3 +93,23 @@
             (keys s) => (contains #{1234 5678}))
           (dump @db :people) => {1234 {:id 1234 :name "Me"  :address nil}
                                  5678 {:id 5678 :name "You" :address "Here"}}))))
+
+;; ## Tests for Overrides
+
+(def custom-people
+  (table
+    [{:id 1234 :name "Me"}
+     {:id 5678 :name "You" :address "Here"}]
+    :primary-key :id
+    :overrides {:address ["varchar(255)" "not null"]}))
+
+(let [db (atom (create-derby :core-custom))]
+  (drop-if-exists! @db :people)
+
+  (fact "about overriding table fields (without insert)."
+        (swap! db custom-people :people :insert? false) => truthy
+        (cleanup @db) => truthy)
+
+  (fact "about overriding table fields with column constraints."
+        (swap! db custom-people :people) => (throws Exception #"cannot accept a NULL value")
+        (cleanup @db) => truthy))
