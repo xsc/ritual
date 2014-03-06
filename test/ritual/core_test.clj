@@ -1,6 +1,7 @@
 (ns ritual.core-test
   (:require [midje.sweet :refer :all]
             [ritual.core :refer :all]
+            [ritual.table :refer [drop-if-exists!]]
             [ritual.db :refer :all]
             [clojure.java.jdbc :as db]))
 
@@ -28,6 +29,8 @@
 ;; ## Tests
 
 (let [db (atom (create-derby :cores))]
+  (drop-if-exists! @db :people)
+
   (fact "about the initial database state."
         (query-count! db "people") => (throws Exception #"does not exist"))
 
@@ -57,9 +60,18 @@
   (with-state-changes [(before :facts (people! db :people :insert? false))
                        (after :facts (cleanup! db))]
     (fact "about insert without creating/dropping a table"
-          (let [db' (people! db :people :force? false)]
+          (let [db' (people @db :people :force? false)]
             db' => @db
             (query-count! db "people") => 2
-            (people! db :people :force? false) => (throws Exception)
+            (people @db :people :force? false) => (throws Exception #"duplicate key value")
+            (query-count! db "people") => 2
             (cleanup db') => db'
-            (query-count! db "people") => 0))))
+            (query-count! db "people") => 0)))
+
+  (with-state-changes [(before :facts (people! db :people :force? false))
+                       (after :facts (cleanup! db))]
+    (fact "about selective cleanup."
+          (db/insert! @db :people [:id] [90]) => [1]
+          (query-count! db "people") => 3
+          (cleanup! db) => truthy
+          (query-count! db "people") => 1)))
