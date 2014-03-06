@@ -45,7 +45,15 @@
 (defn table
   "Create DB table fixture from a given set of data. The result will be a function
    that takes database spec, as well as a table name, to create and fill the respective
-   table. It will return a database spec that can be used to cleanup any created data."
+   table. It will return a database spec that can be used to clean up any created data.
+
+   - `:primary-key`: the field that will be set primary key,
+   - `:overrides`: type/index overrides for database columns,
+   - `:cleanup-by`: vector of columns that will be used for cleanup.
+
+   Cleanup is done by collecting all values for the given columns and deleting all
+   rows that match the given columns.
+   "
   [data & {:keys [primary-key overrides cleanup-by]}]
   (let [columns (collect-columns data primary-key overrides)
         column-types (infer-types columns data)
@@ -67,6 +75,12 @@
             (spec/set-primary-key table-key primary-key)
             (spec/set-columns table-key columns)
             (spec/set-options table-key options))))))
+
+(defn table!
+  "Create table fixture directly. (see `table` for options)"
+  [db-spec table-key & args]
+  (let [f (apply table args)]
+    (f db-spec table-key)))
 
 ;; ## Cleanup
 
