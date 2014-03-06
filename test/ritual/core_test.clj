@@ -11,8 +11,7 @@
   (table
     [{:id 1234 :name "Me"}
      {:id 5678 :name "You" :address "Here"}]
-    :primary-key :id
-    :cleanup-by [:id]))
+    :primary-key :id))
 
 (defn people!
   [db-atom & args]
@@ -66,23 +65,13 @@
   (with-state-changes [(before :facts (people! db :people :insert? false))
                        (after :facts (cleanup! db))]
     (fact "about insert without creating/dropping a table"
-          (let [db' (people @db :people :force? false)]
+          (let [db' (people @db :people :force? false :cleanup :all)]
             db' => @db
             (query-count! db "people") => 2
             (people @db :people :force? false) => (throws Exception #"duplicate key value")
             (query-count! db "people") => 2
             (cleanup db') => db'
             (query-count! db "people") => 0)))
-
-  (with-state-changes [(before :facts (people! db :people :force? false))
-                       (after :facts (cleanup! db))]
-    (fact "about selective cleanup."
-          (db/insert! @db :people [:id] [90]) => [1]
-          (query-count! db "people") => 3
-          (query-data! db "people") => (contains #{[1234 "Me" nil] [5678 "You" "Here"] [90 nil nil]})
-          (cleanup! db) => truthy
-          (query-count! db "people") => 1)
-          (query-data! db "people") => (contains #{[90 nil nil]})
 
   (with-state-changes [(before :facts (people! db :people))
                        (after :facts (cleanup! db))]
@@ -92,7 +81,27 @@
             (count s) => 2
             (keys s) => (contains #{1234 5678}))
           (dump @db :people) => {1234 {:id 1234 :name "Me"  :address nil}
-                                 5678 {:id 5678 :name "You" :address "Here"}}))))
+                                 5678 {:id 5678 :name "You" :address "Here"}})))
+
+;; ## Tests for Cleanup
+
+(def people-for-cleanup
+  (table
+    [{:id 1234 :name "Me"}
+     {:id 5678 :name "You" :address "Here"}]
+    :primary-key :id
+    :cleanup-by [:id]))
+
+(let [db (atom (create-derby :core-cleanup))]
+  (drop-if-exists! @db :people)
+  (fact "about selective cleanup."
+        (swap! db people-for-cleanup :people) => truthy
+        (db/insert! @db :people [:id] [90]) => [1]
+        (query-count! db "people") => 3
+        (query-data! db "people") => (contains #{[1234 "Me" nil] [5678 "You" "Here"] [90 nil nil]})
+        (cleanup! db) => truthy
+        (query-count! db "people") => 1
+        (query-data! db "people") => (contains #{[90 nil nil]})))
 
 ;; ## Tests for Overrides
 
@@ -105,7 +114,6 @@
 
 (let [db (atom (create-derby :core-custom))]
   (drop-if-exists! @db :people)
-
   (fact "about overriding table fields (without insert)."
         (swap! db custom-people :people :insert? false) => truthy
         (cleanup @db) => truthy)

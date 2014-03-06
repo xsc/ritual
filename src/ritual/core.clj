@@ -30,15 +30,15 @@
   "Create cleanup condition map."
   [cleanup-by data]
   (or
-    (when-not cleanup-by :all)
+    (when-not cleanup-by :drop)
     (#{:all :none} cleanup-by)
     (->> (for [cleanup-key cleanup-by]
-         (->> (map #(get % cleanup-key) data)
-              (filter identity)
-              (distinct)
-              (vec)
-              (vector cleanup-key)))
-       (into {}))))
+           (->> (map #(get % cleanup-key) data)
+                (filter identity)
+                (distinct)
+                (vec)
+                (vector cleanup-key)))
+         (into {}))))
 
 ;; ## Table Fixture
 
@@ -58,12 +58,12 @@
   (let [columns (collect-columns data primary-key overrides)
         column-types (infer-types columns data)
         cleanup-conditions (collect-cleanup-conditions cleanup-by data)]
-    (fn [db-spec table-key & {:keys [force? insert?] :as options}]
-      (let [{:keys [force? insert?] :as options} (-> (merge
-                                                       {:force? true
-                                                        :insert? true}
-                                                       options)
-                                                     (assoc :cleanup cleanup-conditions))]
+    (fn [db-spec table-key & {:keys [force? insert? cleanup] :as options}]
+      (let [{:keys [force? insert?] :as options} (merge
+                                                   {:force? true
+                                                    :insert? true
+                                                    :cleanup cleanup-conditions}
+                                                   options)]
         (when force?
           (table/drop-if-exists! db-spec table-key)
           (table/create! db-spec table-key column-types primary-key overrides))
@@ -94,7 +94,7 @@
   [db-spec]
   (doseq [t (spec/tables db-spec)]
     (let [{:keys [force? cleanup]} (spec/options db-spec t)]
-      (cond force? (table/drop-if-exists! db-spec t)
+      (cond (= cleanup :drop) (table/drop-if-exists! db-spec t)
             (= cleanup :none) nil
             (= cleanup :all) (table/clean! db-spec t nil)
             :else (table/clean! db-spec t cleanup))))
