@@ -5,7 +5,8 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/java.jdbc "0.3.3"]
-                 [pandect "0.3.0"]]
+                 [pandect "0.3.0"]
+                 [potemkin "0.3.4"]]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :profiles {:test {:dependencies [[org.apache.derby/derby "10.10.1.1"]
                                    [midje "1.6.2"
