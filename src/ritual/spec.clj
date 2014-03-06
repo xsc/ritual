@@ -62,3 +62,8 @@
   "Get the observed columns for the given table."
   [db-spec table]
   (get-meta db-spec [:tables (sql-keyword table) :columns]))
+
+(defn tables
+  "Get all observed tables."
+  [db-spec]
+  (keys (get-meta db-spec [:tables])))

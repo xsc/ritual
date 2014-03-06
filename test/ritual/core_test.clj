@@ -1,80 +1,65 @@
 (ns ritual.core-test
   (:require [midje.sweet :refer :all]
             [ritual.core :refer :all]
+            [ritual.db :refer :all]
             [clojure.java.jdbc :as db]))
 
-(def db-spec
-  {:subprotocol "derby"
-   :subname "memory:core-test"
-   :create true})
+;; ## Fixture Helpers
 
 (def people
   (table
     [{:id 1234 :name "Me"}
      {:id 5678 :name "You" :address "Here"}]
-    :primary-key :id))
+    :primary-key :id
+    :cleanup-by [:id]))
 
-(let [db (atom db-spec)]
+(defn people!
+  [db-atom & args]
+  (swap! db-atom #(apply people % args)))
+
+(defn cleanup!
+  [db-atom]
+  (swap! db-atom cleanup))
+
+(defn query-count!
+  [db-atom table]
+  (:count (first (db/query @db-atom (str "select count(*) as count from " table)))))
+
+;; ## Tests
+
+(let [db (atom (create-derby :cores))]
   (fact "about the initial database state."
-        (db/query @db "select count(*) as count from people") => (throws Exception #"does not exist"))
+        (query-count! db "people") => (throws Exception #"does not exist"))
 
   (fact "about creating a table."
-        (swap! db people :people :insert? false) => @db
-        (db/query @db "select count(*) as count from people") => [{:count 0}]
-        (swap! db cleanup) => @db
-        (db/query @db "select count(*) as count from people") => (throws Exception #"does not exist"))
+        (people! db :people :insert? false) => truthy
+        (query-count! db "people") => 0
+        (people! db :people :insert? false) => truthy
+        (query-count! db "people") => 0
+        (cleanup! db) => truthy
+        (query-count! db "people") => (throws Exception #"does not exist"))
 
   (fact "about creating/inserting data."
-        (swap! db people :people) => @db
-        (db/query @db "select count(*) as count from people") => [{:count 2}]
+        (people! db :people) => truthy
+        (query-count! db "people") => 2
         (db/query @db "select * from people" :row-fn (juxt :id :name :address)) => (contains #{[1234 "Me" nil] [5678 "You" "Here"]})
-        (swap! db cleanup) => @db
-        (db/query @db "select count(*) as count from people") => (throws Exception #"does not exist"))
+        (cleanup! db) => truthy
+        (query-count! db "people") => (throws Exception #"does not exist"))
 
   (fact "about creating/inserting data into multiple tables."
-        (swap! db #(-> % (people :people) (people :other-people))) => @db
-        (db/query @db "select count(*) as count from people") => [{:count 2}]
-        (db/query @db "select count(*) as count from other_people") => [{:count 2}]
-        (swap! db cleanup) => @db
-        (db/query @db "select count(*) as count from people") => (throws Exception #"does not exist")
-        (db/query @db "select count(*) as count from other_people") => (throws Exception #"does not exist"))
+        (swap! db #(-> % (people :people) (people :other-people))) => truthy
+        (query-count! db "people") => 2
+        (query-count! db "other_people") => 2
+        (cleanup! db) => truthy
+        (query-count! db "people") => (throws Exception #"does not exist")
+        (query-count! db "other_people") => (throws Exception #"does not exist"))
 
-  (with-state-changes [(before :facts (swap! db people :people :insert? false))
-                       (after :facts (swap! db cleanup))]
+  (with-state-changes [(before :facts (people! db :people :insert? false))
+                       (after :facts (cleanup! db))]
     (fact "about insert without creating/dropping a table"
-          (let [db' (people @db :people :create? false)]
+          (let [db' (people! db :people :force? false)]
             db' => @db
-            (db/query db' "select count(*) as count from people") => [{:count 2}]
+            (query-count! db "people") => 2
+            (people! db :people :force? false) => (throws Exception)
             (cleanup db') => db'
-            (db/query db' "select count(*) as count from people") => [{:count 0}])))
-
-  (with-state-changes [(before :facts (swap! db people :people))
-                       (after :facts (swap! db cleanup))]
-    (fact "about snapshot creation."
-          (keys (snapshot @db :people)) => (contains #{1234 5678})
-          (keys (snapshot @db :people [:name])) => (contains #{1234 5678})
-          (keys (snapshot @db :people [:name] :name)) => (contains #{"Me" "You"})
-          (snapshot @db :people [:name :address]) => (snapshot @db :people [:address :name]))
-    (fact "about snapshots + UPDATE"
-          (let [s0 (snapshot @db :people)]
-            (db/execute! @db ["update people set name='me?' where id=1234"]) => [1]
-            (let [s1 (snapshot @db :people)]
-              (s0 1234) =not=> (s1 1234)
-              (s0 5678) => (s1 5678)
-              (diff s0 s1) => [[:update 1234]])))
-    (fact "about snapshots + INSERT"
-          (let [s0 (snapshot @db :people)]
-            (db/execute! @db ["insert into people (id,name) values (90, 'Him')"]) => [1]
-            (let [s1 (snapshot @db :people)]
-              (keys s0) =not=> (contains 90)
-              (keys s1) => (contains 90)
-              (dissoc s1 90) => s0
-              (diff s0 s1) => [[:insert 90]])))
-    (fact "about snapshots + DELETE"
-          (let [s0 (snapshot @db :people)]
-            (db/execute! @db ["delete from people where id=1234"]) => [1]
-            (let [s1 (snapshot @db :people)]
-              (s0 1234) =not=> (s1 1234)
-              (s1 1234) => falsey
-              (s0 5678) => (s1 5678)
-              (diff s0 s1) => [[:delete 1234]])))))
+            (query-count! db "people") => 0))))
