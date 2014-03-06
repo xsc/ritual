@@ -26,6 +26,11 @@
   [db-atom table]
   (:count (first (db/query @db-atom (str "select count(*) as count from " table)))))
 
+(defn query-data!
+  [db-atom table]
+  (db/query @db-atom (str "select * from " table)
+            :row-fn (juxt :id :name :address)))
+
 ;; ## Tests
 
 (let [db (atom (create-derby :cores))]
@@ -45,7 +50,7 @@
   (fact "about creating/inserting data."
         (people! db :people) => truthy
         (query-count! db "people") => 2
-        (db/query @db "select * from people" :row-fn (juxt :id :name :address)) => (contains #{[1234 "Me" nil] [5678 "You" "Here"]})
+        (query-data! db "people") => (contains #{[1234 "Me" nil] [5678 "You" "Here"]})
         (cleanup! db) => truthy
         (query-count! db "people") => (throws Exception #"does not exist"))
 
@@ -53,6 +58,7 @@
         (swap! db #(-> % (people :people) (people :other-people))) => truthy
         (query-count! db "people") => 2
         (query-count! db "other_people") => 2
+        (query-data! db "people") => (query-data! db "other_people")
         (cleanup! db) => truthy
         (query-count! db "people") => (throws Exception #"does not exist")
         (query-count! db "other_people") => (throws Exception #"does not exist"))
@@ -73,5 +79,17 @@
     (fact "about selective cleanup."
           (db/insert! @db :people [:id] [90]) => [1]
           (query-count! db "people") => 3
+          (query-data! db "people") => (contains #{[1234 "Me" nil] [5678 "You" "Here"] [90 nil nil]})
           (cleanup! db) => truthy
-          (query-count! db "people") => 1)))
+          (query-count! db "people") => 1)
+          (query-data! db "people") => (contains #{[90 nil nil]})
+
+  (with-state-changes [(before :facts (people! db :people))
+                       (after :facts (cleanup! db))]
+    (fact "about snapshots/dump based on DB spec."
+          (let [s (snapshot @db :people)]
+            s => map?
+            (count s) => 2
+            (keys s) => (contains #{1234 5678}))
+          (dump @db :people) => {1234 {:id 1234 :name "Me"  :address nil}
+                                 5678 {:id 5678 :name "You" :address "Here"}}))))
