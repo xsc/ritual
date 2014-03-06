@@ -89,19 +89,37 @@
 ;; ## Tracing
 
 (defn- trace-query
-  [[_ query & _]]
-  (println query))
+  "Print the query vector."
+  [tag [_ & rst]]
+  (printf "%s %s%n" tag (pr-str (vec rst))))
 
 (defn- wrap-trace
-  [f]
+  "Wrap the given query execution function to print each query."
+  [f tag]
   (if-not (-> f meta ::trace)
     (-> (fn [& args]
-          (trace-query args)
+          (trace-query tag args)
           (apply f args))
         (vary-meta assoc ::trace f))
     f))
 
+(defn- unwrap-trace
+  "Unwrap the given query."
+  [f]
+  (or (-> f meta ::trace) f))
+
 (defn trace!
+  "Activate SQL tracing."
   []
-  (alter-var-root #'jdbc/execute! wrap-trace)
-  (alter-var-root #'jdbc/query wrap-trace))
+  (alter-var-root #'jdbc/execute! wrap-trace "[jdbc/execute!]")
+  (alter-var-root #'jdbc/insert! wrap-trace "[jdbc/insert!] ")
+  (alter-var-root #'jdbc/delete! wrap-trace "[jdbc/delete!] ")
+  (alter-var-root #'jdbc/update! wrap-trace "[jdbc/update!] ")
+  (alter-var-root #'jdbc/query wrap-trace "[jdbc/query]   "))
+
+(defn untrace!
+  "Deactivate SQL tracing."
+  []
+  (doseq [v [#'jdbc/execute! #'jdbc/insert! #'jdbc/delete!
+             #'jdbc/update! #'jdbc/query]]
+    (alter-var-root v unwrap-trace)))
