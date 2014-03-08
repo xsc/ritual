@@ -31,14 +31,15 @@
   [cleanup-by data]
   (or
     (when-not cleanup-by :drop)
-    (#{:all :none} cleanup-by)
-    (->> (for [cleanup-key cleanup-by]
-           (->> (map #(get % cleanup-key) data)
-                (filter identity)
-                (distinct)
-                (vec)
-                (vector cleanup-key)))
-         (into {}))))
+    (#{:drop :clear :none} cleanup-by)
+    (let [c (if (sequential? cleanup-by) cleanup-by [cleanup-by])]
+      (->> (for [cleanup-key c]
+             (->> (map #(get % cleanup-key) data)
+                  (filter identity)
+                  (distinct)
+                  (vec)
+                  (vector cleanup-key)))
+           (into {})))))
 
 ;; ## Table Fixture
 
@@ -54,16 +55,16 @@
    Cleanup is done by collecting all values for the given columns and deleting all
    rows that match the given columns.
    "
-  [data & {:keys [primary-key overrides cleanup-by]}]
+  [data & {:keys [primary-key overrides]}]
   (let [columns (collect-columns data primary-key overrides)
-        column-types (infer-types columns data)
-        cleanup-conditions (collect-cleanup-conditions cleanup-by data)]
+        column-types (infer-types columns data)]
     (fn [db-spec table-key & {:keys [force? insert? cleanup] :as options}]
-      (let [{:keys [force? insert?] :as options} (merge
-                                                   {:force? true
-                                                    :insert? true
-                                                    :cleanup cleanup-conditions}
-                                                   options)]
+      (let [cleanup-conditions (collect-cleanup-conditions cleanup data)
+            {:keys [force? insert?] :as options} (-> (merge
+                                                       {:force? false
+                                                        :insert? true}
+                                                       options)
+                                                     (assoc :cleanup cleanup-conditions))]
         (when force?
           (table/drop-if-exists! db-spec table-key)
           (table/create! db-spec table-key column-types primary-key overrides))
@@ -88,7 +89,7 @@
   "Cleanup all table fixtures associated with the given database spec. This will
 
    - drop tables if `:force?` was set on creation,
-   - delete rows if `:cleanup-by` is set to `:all`,
+   - delete rows if `:cleanup-by` is set to `:clear`,
    - delete rows using the conditions specified in `:cleanup-by`.
    "
   [db-spec]
@@ -96,7 +97,7 @@
     (let [{:keys [force? cleanup]} (spec/options db-spec t)]
       (cond (= cleanup :drop) (table/drop-if-exists! db-spec t)
             (= cleanup :none) nil
-            (= cleanup :all) (table/clean! db-spec t nil)
+            (= cleanup :clear) (table/clean! db-spec t nil)
             :else (table/clean! db-spec t cleanup))))
   (vary-meta db-spec dissoc ::spec))
 
