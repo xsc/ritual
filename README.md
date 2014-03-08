@@ -124,6 +124,15 @@ For example, the following code will remove rows based on the `shop` column:
 This is useful if you know that your DB logic will only affect a certain part of the data or if
 you want to remove only what you inserted, enabling the non-destructive use of existing datasets.
 
+You can attach explicit cleanup values to the database spec using `ritual.core/cleanup-include`:
+
+```clojure
+(def db
+  (-> db-spec
+      (products-fixture :products)
+      (cleanup-include :products :shop [22 23])))
+```
+
 ### `snapshot`
 
 ### `dump`
