@@ -12,7 +12,7 @@
 
 (import-vars
   [ritual.snapshot
-   snapshot dump]
+   snapshot dump diff]
   [ritual.spec
    cleanup-include])
 
