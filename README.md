@@ -133,13 +133,55 @@ You can attach explicit cleanup values to the database spec using `ritual.core/c
       (cleanup-include :products :shop [22 23])))
 ```
 
-### `snapshot`
+If you rerun the above example, no products should remain in the table.
 
-### `dump`
+### `snapshot` + `dump` + `diff`
+
+The two functions `ritual.core/snapshot` and `ritual.core/dump` will read all values from a given
+database table and create a map ordered by their primary key. `snapshot` will create a hash of each row,
+while `dump` will return the actual data maps.
+
+```clojure
+(def db (person-fixture db-spec :people))
+
+(snapshot db :people)
+;; => {1 "c9fbf27657d4148108c50203e2507c7ccc835d40",
+;;     2 "daa8839c65b695e1340b4477c85125fccac9bf88"}
+
+(dump db :people)
+;; => {1 {:name "Someone", :id 1},
+;;     2 {:name "Else", :id 2}}
+```
+
+Snapshots can be used to decide _if_ changes occured and dumps can be used to analyze those changes.
+
+```clojure
+(clojure.java.jdbc/update! db :people {:name "Nobody"} ["id = ?" 1])
+;; => [1]
+
+(snapshot db :people)
+;; => {1 "cd0e47e65a2277b29681ff641a71d59605141263",
+;;     2 "daa8839c65b695e1340b4477c85125fccac9bf88"}
+
+(dump db :people)
+;; => {1 {:name "Nobody", :id 1},
+;;     2 {:name "Else", :id 2}}
+```
+
+You can compare snapshots using `ritual.core/diff`. It will create a lazy seq of pairs of
+`[:insert/:update/:delete <primary key>]`, e.g. for the above changes:
+
+```clojure
+(diff
+  {1 "c9fbf27657d4148108c50203e2507c7ccc835d40", 2 "daa8839c65b695e1340b4477c85125fccac9bf88"}
+  {1 "cd0e47e65a2277b29681ff641a71d59605141263", 2 "daa8839c65b695e1340b4477c85125fccac9bf88"})
+;; => [[:update 1]]
+```
+
+Options to have a more targeted analysis of data are planned.
 
 ## License
 
 Copyright &copy; 2014 Yannick Scherer
 
-Distributed under the Eclipse Public License either version 1.0 or (at
-your option) any later version.
+Distributed under the Eclipse Public License either version 1.0 or (at your option) any later version.
