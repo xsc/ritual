@@ -92,13 +92,20 @@
           (query-count! db "people") => 0)
 
     (facts "about selective cleanup."
-           (fact "about cleaning up initial data."
+           (fact "about cleaning up data by primary key."
              (swap! db people "people" :cleanup :id) => truthy
              (db/insert! @db :people [:id] [90]) => [1]
              (query-count! db "people") => 3
              (swap! db cleanup) => truthy
              (query-count! db "people") => 1
              (query-data! db "people") => [[90 nil nil]])
+           (fact "about cleaning up data by explicit column values."
+             (swap! db people "people" :cleanup :id) => truthy
+             (db/insert! @db :people [:id] [90]) => [1]
+             (query-count! db "people") => 3
+             (swap! db cleanup-include "people" :id [90])
+             (swap! db cleanup) => truthy
+             (query-count! db "people") => 0)
            (fact "about cleaning up data by some column."
              (swap! db people "people" :cleanup :name) => truthy
              (db/insert! @db :people [:id :name] [90 "Me"] [121 "You"] [234 "Him"]) => [1 1 1]
@@ -125,7 +132,7 @@
     [:only [:id]]       [1234 5678]      {1234 (sha1 "1234") 5678 (sha1 "5678")}
     [:only [:name]]     [1234 5678]      {1234 (sha1 "\"Me\"") 5678 (sha1 "\"You\"")}
     [:only [:id :name]] [1234 5678]      {1234 (sha1 "1234,\"Me\"") 5678 (sha1 "5678,\"You\"")}
-    [:only [:name :id]] [1234 5678]      {1234 (sha1 "1234,\"Me\"") 5678 (sha1 "5678,\"You\"")}) )
+    [:only [:name :id]] [1234 5678]      {1234 (sha1 "1234,\"Me\"") 5678 (sha1 "5678,\"You\"")}))
 
 ;; ## Tests for Overrides
 

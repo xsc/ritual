@@ -73,6 +73,17 @@
   [db-spec table]
   (get-meta db-spec [:tables (sql-keyword table) :cleanup]))
 
+(defn cleanup-include
+  "Add cleanup conditions."
+  [db-spec table column values]
+  (let [vs (if (sequential? values) values [values])]
+    (update-meta db-spec [:tables (sql-keyword table) :cleanup]
+                 (fn [cleanup]
+                   (cond (= cleanup :none) (hash-map column vs)
+                         (keyword? cleanup) cleanup
+                         :else (update-in cleanup [column]
+                                         (comp vec distinct concat) vs))))))
+
 (defn tables
   "Get all observed tables."
   [db-spec]
