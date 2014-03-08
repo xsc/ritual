@@ -63,6 +63,16 @@
   [db-spec table]
   (get-meta db-spec [:tables (sql-keyword table) :columns]))
 
+(defn set-cleanup-conditions
+  "Set cleanup conditions for the given table."
+  [db-spec table c]
+  (assoc-meta db-spec [:tables (sql-keyword table) :cleanup] c))
+
+(defn cleanup-conditions
+  "Get cleanup conditions for the given table."
+  [db-spec table]
+  (get-meta db-spec [:tables (sql-keyword table) :cleanup]))
+
 (defn tables
   "Get all observed tables."
   [db-spec]

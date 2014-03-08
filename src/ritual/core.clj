@@ -60,11 +60,10 @@
         column-types (infer-types columns data)]
     (fn [db-spec table-key & {:keys [force? insert? cleanup] :as options}]
       (let [cleanup-conditions (collect-cleanup-conditions cleanup data)
-            {:keys [force? insert?] :as options} (-> (merge
-                                                       {:force? false
-                                                        :insert? true}
-                                                       options)
-                                                     (assoc :cleanup cleanup-conditions))]
+            {:keys [force? insert?] :as options} (merge
+                                                   {:force? false
+                                                    :insert? true}
+                                                   options)]
         (when force?
           (table/drop-if-exists! db-spec table-key)
           (table/create! db-spec table-key column-types primary-key overrides))
@@ -73,6 +72,7 @@
         (when insert?
           (table/insert! db-spec table-key column-types data))
         (-> db-spec
+            (spec/set-cleanup-conditions table-key cleanup-conditions)
             (spec/set-primary-key table-key primary-key)
             (spec/set-columns table-key columns)
             (spec/set-options table-key options))))))
@@ -94,8 +94,8 @@
    "
   [db-spec]
   (doseq [t (spec/tables db-spec)]
-    (let [{:keys [force? cleanup]} (spec/options db-spec t)]
-      (cond (= cleanup :drop) (table/drop-if-exists! db-spec t)
+    (let [cleanup (spec/cleanup-conditions db-spec t)]
+      (cond (or (not cleanup) (= cleanup :drop)) (table/drop-if-exists! db-spec t)
             (= cleanup :none) nil
             (= cleanup :clear) (table/clean! db-spec t nil)
             :else (table/clean! db-spec t cleanup))))
