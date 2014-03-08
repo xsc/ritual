@@ -25,11 +25,12 @@
   "Create snapshot map for the given table.."
   [db-spec table columns primary-key & {:keys [row-fn]}]
   (assert primary-key "no valid primary key given for snapshot.")
-  (let [cols (->> columns
-                  (cons primary-key)
-                  (filter identity)
-                  (distinct)
-                  (mapv sql-keyword))
+  (let [cols (when (seq columns)
+               (->> columns
+                    (cons primary-key)
+                    (filter identity)
+                    (distinct)
+                    (mapv sql-keyword)))
         pk (sql-keyword primary-key)
         query (snapshot-query table cols)
         f (or row-fn identity)]
