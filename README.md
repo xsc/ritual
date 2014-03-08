@@ -7,6 +7,12 @@ __ritual__ offers database fixtures for Clojure tests.
 
 ## Usage
 
+__Leiningen ([via Clojars](https://clojars.org/ritual))__
+
+```clojure
+[ritual "0.1.0-SNAPSHOT"] ;; unstable
+```
+
 __Clojure__
 
 ```clojure
