@@ -7,23 +7,23 @@
   "Create key vector, prefixed with `::spec`."
   [k]
   (if (keyword? k)
-    [::spec k]
-    (vec (cons ::spec k))))
+    [::data k]
+    (vec (cons ::data k))))
 
 (defn- assoc-meta
-  "Assoc the given key/value in the metadata."
+  "Assoc the given key/value into the DB spec."
   [db-spec k v]
-  (vary-meta db-spec assoc-in (->key k) v))
+  (assoc-in db-spec (->key k) v))
 
 (defn- update-meta
   "Update the given key/value in the metadata."
   [db-spec k f & args]
-  (vary-meta db-spec update-in (->key k) #(apply f % args)))
+  (update-in db-spec (->key k) #(apply f % args)))
 
 (defn- get-meta
   "Access metadata."
   [db-spec k]
-  (get-in (meta db-spec) (->key k)))
+  (get-in db-spec (->key k)))
 
 ;; ## Data
 

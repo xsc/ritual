@@ -30,18 +30,21 @@
 
 (defn- collect-cleanup-conditions
   "Create cleanup condition map."
-  [cleanup-by data]
-  (or
-    (when-not cleanup-by :drop)
-    (#{:drop :clear :none} cleanup-by)
-    (let [c (if (sequential? cleanup-by) cleanup-by [cleanup-by])]
-      (->> (for [cleanup-key c]
-             (->> (map #(get % cleanup-key) data)
-                  (filter identity)
-                  (distinct)
-                  (vec)
-                  (vector cleanup-key)))
-           (into {})))))
+  [cleanup-by data table-created? primary-key]
+  (if cleanup-by
+    (or
+      (#{:drop :clear :none} cleanup-by)
+      (let [c (if (sequential? cleanup-by) cleanup-by [cleanup-by])]
+        (->> (for [cleanup-key c]
+               (->> (map #(get % cleanup-key) data)
+                    (filter identity)
+                    (distinct)
+                    (vec)
+                    (vector cleanup-key)))
+             (into {}))))
+    (if table-created?
+      :drop
+      (recur [primary-key] data table-created? primary-key))))
 
 ;; ## Table Fixture
 
@@ -61,18 +64,24 @@
   (let [columns (collect-columns data primary-key overrides)
         column-types (infer-types columns data)]
     (fn [db-spec table-key & {:keys [force? insert? cleanup] :as options}]
-      (let [cleanup-conditions (collect-cleanup-conditions cleanup data)
-            {:keys [force? insert?] :as options} (merge
+      (let [{:keys [force? insert?] :as options} (merge
                                                    {:force? false
                                                     :insert? true}
-                                                   options)]
-        (when force?
-          (table/drop-if-exists! db-spec table-key)
+                                                   options)
+            exists? (table/exists? db-spec table-key)
+            drop? (and exists? force?)
+            create? (or (not exists?) drop?)
+            cleanup-conditions (collect-cleanup-conditions cleanup data create? primary-key)]
+
+        (when drop?
+          (table/drop! db-spec table-key))
+
+        (when create?
           (table/create! db-spec table-key column-types primary-key overrides))
-        (when-not force?
-          (table/create-if-not-exists! db-spec table-key column-types primary-key overrides))
+
         (when insert?
           (table/insert! db-spec table-key column-types data))
+
         (-> db-spec
             (spec/set-cleanup-conditions table-key cleanup-conditions)
             (spec/set-primary-key table-key primary-key)

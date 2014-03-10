@@ -46,13 +46,15 @@
   (->> (create-column-vectors column-types primary-key override-map)
        (apply jdbc/create-table-ddl (sqlize table-key))
        (vector)
-       (jdbc/execute! db-spec)))
+       (jdbc/execute! db-spec))
+  db-spec)
 
 (defn create-if-not-exists!
   "Create table if it does not already exist."
   [db-spec table-key column-types primary-key override-map]
   (when-not (exists? db-spec table-key)
-    (create! db-spec table-key column-types primary-key override-map)))
+    (create! db-spec table-key column-types primary-key override-map))
+  db-spec)
 
 ;; ## Drop
 
@@ -61,13 +63,15 @@
   [db-spec table-key]
   (->> (jdbc/drop-table-ddl (sqlize table-key))
        (vector)
-       (jdbc/execute! db-spec)))
+       (jdbc/execute! db-spec))
+  db-spec)
 
 (defn drop-if-exists!
   "Drop table if it exists."
   [db-spec table-key]
   (when (exists? db-spec table-key)
-    (drop! db-spec table-key)))
+    (drop! db-spec table-key))
+  db-spec)
 
 ;; ## Insert
 
