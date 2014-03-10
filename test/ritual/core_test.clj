@@ -52,6 +52,18 @@
             (cleanup db') => truthy
             (query-count! db "people") => (throws Exception #"does not exist")))
 
+    (fact "about removing only the inserted data if the table already existed."
+          (let [db' (people @db "people" :insert? false)]
+            (query-count! db "people") => 0
+            (swap! db people "people") => truthy
+             (db/insert! @db :people [:id] [90]) => [1]
+            (query-count! db "people") => 3
+            (swap! db cleanup) => truthy
+            (query-count! db "people") => 1
+            (query-data! db "people") => [[90 nil nil]]
+            (cleanup db') => truthy
+            (query-count! db "people") => (throws Exception #"does not exist")))
+
     (fact "about creating/inserting data."
           (swap! db people "people") => truthy
           (query-count! db "people") => 2

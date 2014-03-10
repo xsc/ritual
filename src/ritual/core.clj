@@ -31,20 +31,19 @@
 (defn- collect-cleanup-conditions
   "Create cleanup condition map."
   [cleanup-by data table-created? primary-key]
-  (if cleanup-by
-    (or
-      (#{:drop :clear :none} cleanup-by)
-      (let [c (if (sequential? cleanup-by) cleanup-by [cleanup-by])]
-        (->> (for [cleanup-key c]
-               (->> (map #(get % cleanup-key) data)
-                    (filter identity)
-                    (distinct)
-                    (vec)
-                    (vector cleanup-key)))
-             (into {}))))
-    (if table-created?
-      :drop
-      (recur [primary-key] data table-created? primary-key))))
+  (cond cleanup-by (or
+                     (#{:drop :clear :none} cleanup-by)
+                     (let [c (if (sequential? cleanup-by) cleanup-by [cleanup-by])]
+                       (->> (for [cleanup-key c]
+                              (->> (map #(get % cleanup-key) data)
+                                   (filter identity)
+                                   (distinct)
+                                   (vec)
+                                   (vector cleanup-key)))
+                            (into {}))))
+        table-created? :drop
+        primary-key (recur [primary-key] data table-created? primary-key)
+        :else :none))
 
 ;; ## Table Fixture
 
