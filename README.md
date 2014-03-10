@@ -5,6 +5,9 @@ __ritual__ offers database fixtures for Clojure tests.
 [![Build Status](https://travis-ci.org/xsc/ritual.png)](https://travis-ci.org/xsc/ritual)
 [![endorse](https://api.coderwall.com/xsc/endorsecount.png)](https://coderwall.com/xsc)
 
+It should play nicely with [test.check](https://github.com/clojure/test.check) for data generation, and
+[Derby](http://db.apache.org/derby/) or [H2](http://www.h2database.com/html/main.html) as in-memory databases.
+
 ## Usage
 
 __Leiningen__ ([via Clojars](https://clojars.org/ritual))
@@ -18,6 +21,8 @@ __Clojure__
 ```clojure
 (require '[ritual.core :refer :all])
 ```
+
+## Functionality
 
 ### `table`
 
