@@ -83,7 +83,7 @@
           (table/insert! db-spec table-key column-types data))
 
         (-> db-spec
-            (spec/set-cleanup-conditions table-key cleanup-conditions)
+            (spec/add-cleanup-conditions table-key cleanup-conditions)
             (spec/set-primary-key table-key primary-key)
             (spec/set-columns table-key columns)
             (spec/set-options table-key options))))))

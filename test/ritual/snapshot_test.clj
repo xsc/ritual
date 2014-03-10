@@ -56,6 +56,6 @@
           (let [db-spec' (-> db-spec
                              (spec/set-columns :test [:value :text])
                              (spec/set-primary-key :test :id))]
-            db-spec' => db-spec
+            db-spec' => (contains db-spec)
             (snapshot db-spec' :test) => (snapshot db-spec :test :by :id)
             (dump db-spec' :test) => (dump db-spec :test :by :id)))))

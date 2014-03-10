@@ -63,10 +63,23 @@
   [db-spec table]
   (get-meta db-spec [:tables (sql-keyword table) :columns]))
 
-(defn set-cleanup-conditions
-  "Set cleanup conditions for the given table."
+;; ## Cleanup
+
+(defn- merge-cleanup-conditions
+  [cond-a cond-b]
+  (cond (not cond-a) cond-b
+        (not cond-b) cond-a
+        (= cond-a cond-b) cond-a
+        (or (= cond-a :drop) (= cond-b :drop)) :drop
+        (or (= cond-a :clear) (= cond-b :clear)) :clear
+        (= cond-a :none) cond-b
+        (= cond-b :none) cond-a
+        :else (merge-with (comp vec distinct concat) cond-a cond-b)))
+
+(defn add-cleanup-conditions
+  "Add cleanup conditions for the given table."
   [db-spec table c]
-  (assoc-meta db-spec [:tables (sql-keyword table) :cleanup] c))
+  (update-meta db-spec [:tables (sql-keyword table) :cleanup] merge-cleanup-conditions c))
 
 (defn cleanup-conditions
   "Get cleanup conditions for the given table."
@@ -78,11 +91,9 @@
   [db-spec table column values]
   (let [vs (if (sequential? values) values [values])]
     (update-meta db-spec [:tables (sql-keyword table) :cleanup]
-                 (fn [cleanup]
-                   (cond (= cleanup :none) (hash-map column vs)
-                         (keyword? cleanup) cleanup
-                         :else (update-in cleanup [column]
-                                         (comp vec distinct concat) vs))))))
+                 merge-cleanup-conditions (hash-map column vs))))
+
+;; ## Access
 
 (defn tables
   "Get all observed tables."
