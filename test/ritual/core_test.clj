@@ -42,6 +42,16 @@
           (swap! db cleanup) => truthy
           (query-count! db "people") => (throws Exception #"does not exist"))
 
+    (fact "about not dropping a table if it was not created using the given spec."
+          (let [db' (people @db "people" :insert? false)]
+            (query-count! db "people") => 0
+            (swap! db people "people" :insert? false) => truthy
+            (query-count! db "people") => 0
+            (swap! db cleanup) => truthy
+            (query-count! db "people") => 0
+            (cleanup db') => truthy
+            (query-count! db "people") => (throws Exception #"does not exist")))
+
     (fact "about creating/inserting data."
           (swap! db people "people") => truthy
           (query-count! db "people") => 2
