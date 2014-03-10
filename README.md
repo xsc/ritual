@@ -89,10 +89,11 @@ You can supply `:insert? false` to the creation function to prevent inserting of
 
 #### Custom Cleanup
 
-By default, a table is dropped once `ritual.core/cleanup` is called. You can supply a different cleanup strategy
-using the `:cleanup` option:
+By default, a table is dropped once `ritual.core/cleanup` is called only if it was created by ritual.
+Otherwise, only the inserted data (identified by the primary key) is removed. You can supply a different
+cleanup strategy using the `:cleanup` option:
 
-- `:drop` (default): drops the table,
+- `:drop`: drops the table regardless of who created it,
 - `:clear`: removes all rows from the table,
 - `:none`: don't touch the table,
 - a vector of columns: the given columns' values will be collected using the initial data and only rows that match
