@@ -84,8 +84,8 @@
 
 (defn insert!
   "Insert the given data maps into the given table using the given column type map."
-  [db-spec table-key column-types data]
-  (let [column-names (mapv sqlize (keys column-types))
+  [db-spec table-key columns data]
+  (let [column-names (mapv sqlize columns)
         column-juxt #(mapv (fn [k] (get % k)) column-names)
         data-rows (->> (map sqlize-row data)
                        (mapv column-juxt))]
@@ -97,18 +97,21 @@
   "Remove rows from the given table using the given conditions"
   [db-spec table-key conditions]
   (if (seq conditions)
-    (let [conditions (for [[k v] conditions]
-                       (let [vs (if (sequential? v) v [v])]
-                         (vector
-                           (sqlize k)
-                           (clojure.string/join "," (repeat (count vs) "?"))
-                           vs)))
-          query (->> (for [[k s _] conditions]
-                       (format "%s in (%s)" k s))
-                     (clojure.string/join " and ")
-                     (str "delete from " (sqlize table-key) " where "))]
-      (->> (mapcat last conditions)
-           (cons query)
-           (vec)
-           (jdbc/execute! db-spec)))
+    (let [conditions (->> (for [[k v] conditions]
+                            (when-let [vs (seq (if (sequential? v) v [v]))]
+                              (vector
+                                (sqlize k)
+                                (clojure.string/join "," (repeat (count vs) "?"))
+                                vs)))
+                          (filter identity))]
+      (if (seq conditions)
+        (let [query (->> (for [[k s _] conditions]
+                           (format "%s in (%s)" k s))
+                         (clojure.string/join " and ")
+                         (str "delete from " (sqlize table-key) " where "))]
+          (->> (mapcat last conditions)
+               (cons query)
+               (vec)
+               (jdbc/execute! db-spec)))
+        [0]))
     (jdbc/execute! db-spec [(format "delete from %s" (sqlize table-key))])))

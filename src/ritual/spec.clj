@@ -1,5 +1,6 @@
 (ns ritual.spec
-  (:require [ritual.utils :refer [sql-keyword]]))
+  (:require [ritual.utils :refer [sql-keyword]]
+            [clojure.set :refer [difference]]))
 
 ;; ## Helpers
 
@@ -41,6 +42,16 @@
   [db-spec table]
   (get-meta db-spec [:tables (sql-keyword table) :primary-key]))
 
+(defn set-auto-generated
+  [db-spec table columns]
+  (->> (mapv sql-keyword columns)
+       (set)
+       (assoc-meta db-spec [:tables (sql-keyword table) :auto])))
+
+(defn auto-generated
+  [db-spec table]
+  (get-meta db-spec [:tables (sql-keyword table) :auto]))
+
 (defn set-options
   "Set initialization options for the given table."
   [db-spec table options]
@@ -62,6 +73,13 @@
   "Get the observed columns for the given table."
   [db-spec table]
   (get-meta db-spec [:tables (sql-keyword table) :columns]))
+
+(defn insert-columns
+  "Get columns to be used for inserting data."
+  [db-spec table]
+  (difference
+    (columns db-spec table)
+    (auto-generated db-spec table)))
 
 ;; ## Cleanup
 

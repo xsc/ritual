@@ -59,7 +59,7 @@
    Cleanup is done by collecting all values for the given columns and deleting all
    rows that match the given columns.
    "
-  [data & {:keys [primary-key overrides]}]
+  [data & {:keys [primary-key auto-generate overrides]}]
   (let [columns (collect-columns data primary-key overrides)
         column-types (infer-types columns data)]
     (fn [db-spec table-key & {:keys [force? insert? cleanup] :as options}]
@@ -70,7 +70,13 @@
             exists? (table/exists? db-spec table-key)
             drop? (and exists? force?)
             create? (or (not exists?) drop?)
-            cleanup-conditions (collect-cleanup-conditions cleanup data create? primary-key)]
+            cleanup-conditions (collect-cleanup-conditions cleanup data create? primary-key)
+            db-spec (-> db-spec
+                        (spec/add-cleanup-conditions table-key cleanup-conditions)
+                        (spec/set-primary-key table-key primary-key)
+                        (spec/set-auto-generated table-key auto-generate)
+                        (spec/set-columns table-key columns)
+                        (spec/set-options table-key options))]
 
         (when drop?
           (table/drop! db-spec table-key))
@@ -79,13 +85,9 @@
           (table/create! db-spec table-key column-types primary-key overrides))
 
         (when insert?
-          (table/insert! db-spec table-key column-types data))
+          (table/insert! db-spec table-key (spec/insert-columns db-spec table-key) data))
 
-        (-> db-spec
-            (spec/add-cleanup-conditions table-key cleanup-conditions)
-            (spec/set-primary-key table-key primary-key)
-            (spec/set-columns table-key columns)
-            (spec/set-options table-key options))))))
+        db-spec))))
 
 (defn table!
   "Create table fixture directly. (see `table` for options)"
