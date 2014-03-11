@@ -52,31 +52,72 @@
   (let [initial-types (zipmap columns (repeat nil))]
     (reduce update-column-types initial-types data)))
 
-;; ## Type Mappings
+;; ## DB-specific Adjustments
 
-(def default-types
-  "Types for most SQL databases."
-  {:text       "varchar(32672)"
-   :string     "varchar(255)"
-   :integer    "integer"
-   :float      "double"
-   :biginteger "bigint"
-   :bigdecimal "decimal"
-   :date       "date"
-   :unknown    "blob"})
+(def ^:private default-db
+  "Data for most SQL databases."
+  {:types {:text       "varchar(32672)"
+           :string     "varchar(255)"
+           :integer    "integer"
+           :float      "double"
+           :biginteger "bigint"
+           :bigdecimal "decimal"
+           :date       "date"
+           :unknown    "blob"}
+   :primary-key    "primary key"
+   :auto-increment "generated always as identity (start with 1, increment by 1)"
+   :get-generated  vals})
 
-(def mysql-types
-  "Types for MySQL."
-  {:text       "text"
-   :string     "varchar(255)"
-   :integer    "integer"
-   :float      "double"
-   :biginteger "bigint"
-   :bigdecimal "decimal"
-   :date       "date"
-   :unknown    "blob"})
+(def ^:private mysql-db
+  "Data for MySQL databases."
+  (-> default-db
+      (assoc :auto-increment "auto_increment")))
 
-(def ^:dynamic *type-mapping*
-  "Types to use for mapping the abstract ones to
-   DB-specific ones."
-  default-types)
+(def ^:dynamic ^:private *dbs*
+  "Available DBs."
+  {:default default-db
+   :mysql mysql-db})
+
+(def ^:dynamic *db*
+  "Data to use for DB-specific types, etc ..."
+  :default)
+
+(defn set-db!
+  "Globally set the used DB type."
+  [k]
+  (assert (contains? *dbs* k) "not a valid DB.")
+  (alter-var-root #'*db* (constantly k)))
+
+(defmacro with-db
+  "Set the current DB type for the given body."
+  [k & body]
+  `(binding [*db* ~k]
+     ~@body))
+
+(defn get-db
+  "Get currently set DB map."
+  []
+  (get *dbs* *db*))
+
+;; ## Access
+
+(defn type->db-type
+  "Get current type mapping."
+  [column-type]
+  (let [m (-> (get-db) :types)]
+    (get m column-type (:unkown m))))
+
+(defn primary-key-string
+  "Get current primary key string."
+  []
+  (:primary-key (get-db)))
+
+(defn auto-increment-string
+  "Get current auto-increment string."
+  []
+  (:auto-increment (get-db)))
+
+(defn generated-ids-fn
+  "Get function to retrieve the generated IDs from a single query result."
+  []
+  (:get-generated (get-db)))

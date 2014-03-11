@@ -182,8 +182,7 @@
     [{:name "Me"}
      {:name "You" :address "Here"}]
     :primary-key :id
-    :auto-generate [:id]
-    :overrides {:id ["integer" "primary key" "generated always as identity (start with 1, increment by 1)"]}))
+    :auto-generate [:id]))
 
 (let [db (atom (create-derby :core-auto))]
   (drop-if-exists! @db :people)

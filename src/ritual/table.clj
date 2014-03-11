@@ -23,27 +23,33 @@
 (defn- create-column-vectors
   "Create column vectors based on the current type mapping and the given column
    types, primary key and a map of overrides (by column name)."
-  [column-types primary-key override-map]
-  (let [unknown-mapping (get *type-mapping* :unknown)
-        primary-key-name (sqlize primary-key)
+  [column-types primary-key auto-generated override-map]
+  (let [primary-key-name (sqlize primary-key)
+        auto-generated? (set (map sqlize auto-generated))
         overrides (->> (for [[k vs] override-map]
                          [(sqlize k) (if (coll? vs) vs [vs])])
                        (into {}))]
-    (for [[column column-type] column-types
-          :let [column-name (sqlize column)]]
+    (for [[column column-type'] column-types
+          :let [column-name (sqlize column)
+                column-type (or column-type'
+                                (if (auto-generated? column-name)
+                                  :integer
+                                  :unknown))]]
       (vec
         (if-let [o (overrides column-name)]
           (cons column-name o)
-          (let [type-name (get *type-mapping* column-type unknown-mapping)]
+          (let [type-name (t/type->db-type column-type)]
             (concat
               [column-name type-name]
               (when (= column-name primary-key-name)
-                ["primary key"]))))))))
+                [(t/primary-key-string)])
+              (when (auto-generated? column-name)
+                [(t/auto-increment-string)]))))))))
 
 (defn create!
   "Create table using the given column types and primary key."
-  [db-spec table-key column-types primary-key override-map]
-  (->> (create-column-vectors column-types primary-key override-map)
+  [db-spec table-key column-types primary-key auto-generated override-map]
+  (->> (create-column-vectors column-types primary-key auto-generated override-map)
        (apply jdbc/create-table-ddl (sqlize table-key))
        (vector)
        (jdbc/execute! db-spec))
