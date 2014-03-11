@@ -8,7 +8,9 @@
 (fact "about the snapshot SELECT query"
       (snapshot-query :table [:a :b]) => ["select a,b from table"]
       (snapshot-query :a-table [:a-or-c :b]) => ["select a_or_c,b from a_table"]
-      (snapshot-query :table []) => ["select * from table"])
+      (snapshot-query :table []) => ["select * from table"]
+      (snapshot-query :table [] :id [1 2 3]) => ["select * from table where id in (?,?,?)" 1 2 3]
+      (snapshot-query :table [] :id [1 2 3] :b ["b"]) => ["select * from table where id in (?,?,?) and b = ?" 1 2 3 "b"])
 
 (let [db-spec (create-derby :snapshot)]
   (with-state-changes [(before :facts (->> [[:id :integer "PRIMARY KEY"]
@@ -42,6 +44,27 @@
             (vals s1) => (has every? string?)
             (s1 1234) => (s1 5678)
             (snapshot db-spec :test :by :id :only [:text :value]) => s1)
+
+          (let [s (snapshot db-spec :test :by :id
+                            :id [1234])]
+            s => map?
+            (count s) => 1
+            (s 1234) => string?)
+
+          (let [s (snapshot db-spec :test :by :id
+                            :value "abc"
+                            :text "def")]
+            s => map?
+            (count s) => 2
+            (s 1234) => string?
+            (s 5678) => string?)
+
+          (let [s (snapshot db-spec :test :by :id
+                            :value "abc"
+                            :text "defg")]
+            s => map?
+            s => empty?)
+
           (let [d (dump db-spec :test :by :id)]
             d => map?
             d =not=> empty?

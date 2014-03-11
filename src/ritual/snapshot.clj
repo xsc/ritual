@@ -8,22 +8,52 @@
 
 ;; ## Snapshot SQL
 
+(defn- snapshot-condition
+  "Create 'IN' or '=' condition for snapshot query."
+  [k vs]
+  (when (and k (seq vs))
+    (if (= (count vs) 1)
+      (format "%s = ?" (sqlize k))
+      (format "%s in (%s)"
+              (sqlize k)
+              (s/join "," (repeat (count vs) "?"))))))
+
+(defn- snapshot-where
+  "Create WHERE clause for snapshot query."
+  [conditions]
+  (let [pairs (for [[k vs] (partition 2 conditions)]
+                [k (if (coll? vs) vs [vs])])
+        values (apply concat (map second pairs))]
+    (when (seq values)
+      (when-let [parts (seq
+                         (keep
+                           (fn [[k vs]]
+                             (snapshot-condition k vs))
+                           pairs))]
+        (vector
+          (str "where " (s/join " and " parts))
+          values)))))
+
 (defn snapshot-query
   "Create query to retrieve the given columns from the given table."
-  [table columns]
-  (vector
-    (format "select %s from %s"
-            (if (seq columns)
-              (->> (map sqlize columns)
-                   (filter identity)
-                   (distinct)
-                   (s/join ","))
-              "*")
-            (sqlize table))))
+  [table columns & conditions]
+  (let [base-clause (format "select %s from %s"
+                            (if (seq columns)
+                              (->> (map sqlize columns)
+                                   (filter identity)
+                                   (distinct)
+                                   (s/join ","))
+                              "*")
+                            (sqlize table))
+        [where-clause values] (snapshot-where conditions)
+        query-string (->> [base-clause where-clause]
+                          (filter identity)
+                          (s/join " "))]
+    (vec (list* query-string values))))
 
 (defn select-snapshot!
   "Create snapshot map for the given table.."
-  [db-spec table columns primary-key & {:keys [row-fn]}]
+  [db-spec table columns primary-key conditions & {:keys [row-fn]}]
   (assert primary-key "no valid primary key given for snapshot.")
   (let [cols (when (seq columns)
                (->> columns
@@ -32,7 +62,7 @@
                     (distinct)
                     (mapv sql-keyword)))
         pk (sql-keyword primary-key)
-        query (snapshot-query table cols)
+        query (apply snapshot-query table cols conditions)
         f (or row-fn identity)]
     (jdbc/query db-spec query
                 :row-fn (fn [row]
@@ -61,6 +91,11 @@
            cols))
        (sort-by sqlize)))
 
+(defn- prepare-conditions
+  [opts]
+  (->> (dissoc opts :only :by)
+       (apply concat)))
+
 (defn- prepare-primary-key
   "Prepare the primary key for the given table, based on the given DB spec."
   [db-spec table by]
@@ -69,24 +104,26 @@
 (defn snapshot
   "Create snapshot map for the given table, associating the primary key value
    with a hash of the respective row."
-  [db-spec table & {:keys [only by]}]
-  (let [columns (prepare-columns db-spec table only)
+  [db-spec table & {:keys [only by] :as opts}]
+  (let [conditions (prepare-conditions opts)
+        columns (prepare-columns db-spec table only)
         primary-key (prepare-primary-key db-spec table by)
         hash-columns (->> (map sql-keyword only)
                           (distinct)
                           (sort-by sqlize)
                           (or (seq columns)))]
     (select-snapshot!
-      db-spec table columns primary-key
+      db-spec table columns primary-key conditions
       :row-fn #(snapshot-hash hash-columns %))))
 
 (defn dump
   "Create dump for the given table, associating the primary key value
    with the observed columns of the given row."
-  [db-spec table & {:keys [only by]}]
-  (let [columns (prepare-columns db-spec table only)
+  [db-spec table & {:keys [only by] :as opts}]
+  (let [conditions (prepare-conditions opts)
+        columns (prepare-columns db-spec table only)
         primary-key (prepare-primary-key db-spec table by)]
-    (select-snapshot! db-spec table columns primary-key)))
+    (select-snapshot! db-spec table columns primary-key conditions)))
 
 ;; ## Diff
 
