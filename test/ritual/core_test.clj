@@ -174,3 +174,25 @@
   (fact "about overriding table fields with column constraints."
         (swap! db custom-people :people) => (throws Exception #"cannot accept a NULL value")
         (cleanup @db) => truthy))
+
+;; ## Tests for auto-generated Keys
+
+(def auto-people
+  (table
+    [{:name "Me"}
+     {:name "You" :address "Here"}]
+    :primary-key :id
+    :auto-generate [:id]
+    :overrides {:id ["integer" "primary key" "generated always as identity (start with 1, increment by 1)"]}))
+
+(let [db (atom (create-derby :core-auto))]
+  (drop-if-exists! @db :people)
+  (fact "about auto-generated keys."
+        (swap! db auto-people "people") => truthy
+        (let [s (snapshot @db "people")]
+          s => map?
+          (count s) => 2
+          (keys s) => (has every? integer?))
+        (let [d (dump @db "people")]
+          (vals d) => (has every? (comp integer? :id)))
+        (swap! db cleanup) => truthy))
