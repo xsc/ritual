@@ -1,7 +1,7 @@
 (ns ritual.table
   (:require [ritual
-             [types :refer [*type-mapping*]]
-             [utils :refer [sqlize]]]
+             [types :as t]
+             [utils :refer [sqlize sql-keyword]]]
             [clojure.java.jdbc :as jdbc]))
 
 ;; ## Check Existence
@@ -88,14 +88,41 @@
          [(sqlize k) v])
        (into {})))
 
+(defn- create-insert-query
+  "Create query string for a single INSERT operation."
+  [table-key column-names]
+  (format "insert into %s (%s) values (%s)"
+          (sqlize table-key)
+          (clojure.string/join "," column-names)
+          (clojure.string/join "," (repeat (count column-names) "?"))))
+
+(defn- add-inserted-ids
+  "Add inserted IDs to Metadata."
+  [db-spec table-key ids]
+  (->> (filter identity ids)
+       (vary-meta db-spec update-in [::data (sql-keyword table-key)] (comp set concat))))
+
+(defn inserted-keys
+  "Get IDs inserted into the given table."
+  [db-spec table-key]
+  (get-in (meta db-spec) [::data (sql-keyword table-key)]))
+
 (defn insert!
   "Insert the given data maps into the given table using the given column type map."
   [db-spec table-key columns data]
   (let [column-names (mapv sqlize columns)
         column-juxt #(mapv (fn [k] (get % k)) column-names)
         data-rows (->> (map sqlize-row data)
-                       (mapv column-juxt))]
-    (apply jdbc/insert! db-spec (sqlize table-key) column-names data-rows)))
+                       (mapv column-juxt))
+        query-string (create-insert-query table-key column-names)
+        f (t/generated-ids-fn)]
+    (->>
+      (jdbc/with-db-transaction [db db-spec]
+        (->> (for [row data-rows]
+               (jdbc/db-do-prepared-return-keys db query-string row))
+             (vec)))
+      (mapcat f)
+      (add-inserted-ids db-spec table-key))))
 
 ;; ## Selective Cleanup
 

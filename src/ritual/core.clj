@@ -14,7 +14,9 @@
   [ritual.snapshot
    snapshot dump diff]
   [ritual.spec
-   cleanup-include])
+   cleanup-include]
+  [ritual.table
+   inserted-keys])
 
 ;; ## Data
 
@@ -47,6 +49,14 @@
 
 ;; ## Table Fixture
 
+(defn- cleanup-include-inserted-keys
+  "Add auto-generated IDs to cleanup."
+  [db-spec table-key primary-key]
+  (if primary-key
+    (->> (inserted-keys db-spec table-key)
+         (cleanup-include db-spec table-key primary-key))
+    db-spec))
+
 (defn table
   "Create DB table fixture from a given set of data. The result will be a function
    that takes database spec, as well as a table name, to create and fill the respective
@@ -77,17 +87,11 @@
                         (spec/set-auto-generated table-key auto-generate)
                         (spec/set-columns table-key columns)
                         (spec/set-options table-key options))]
-
-        (when drop?
-          (table/drop! db-spec table-key))
-
-        (when create?
-          (table/create! db-spec table-key column-types primary-key overrides))
-
-        (when insert?
-          (table/insert! db-spec table-key (spec/insert-columns db-spec table-key) data))
-
-        db-spec))))
+        (cond-> db-spec
+          drop?   (table/drop! table-key)
+          create? (table/create! table-key column-types primary-key auto-generate overrides)
+          insert? (table/insert! table-key (spec/insert-columns db-spec table-key) data)
+          (not cleanup) (cleanup-include-inserted-keys table-key primary-key))))))
 
 (defn table!
   "Create table fixture directly. (see `table` for options)"

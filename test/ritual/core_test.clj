@@ -193,5 +193,6 @@
           (count s) => 2
           (keys s) => (has every? integer?))
         (let [d (dump @db "people")]
-          (vals d) => (has every? (comp integer? :id)))
+          (vals d) => (has every? (comp integer? :id))
+          (map :id (vals d)) => (contains (inserted-keys @db "people")))
         (swap! db cleanup) => truthy))
