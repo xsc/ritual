@@ -57,6 +57,13 @@
          (cleanup-include db-spec table-key primary-key))
     db-spec))
 
+(defn- cond-apply
+  "Apply function to the first parameter and the rest args only if `p?` is true."
+  [db-spec p? f & args]
+  (if p?
+    (apply f db-spec args)
+    db-spec))
+
 (defn table
   "Create DB table fixture from a given set of data. The result will be a function
    that takes database spec, as well as a table name, to create and fill the respective
@@ -87,11 +94,11 @@
                         (spec/set-auto-generated table-key auto-generate)
                         (spec/set-columns table-key columns)
                         (spec/set-options table-key options))]
-        (cond-> db-spec
-          drop?   (table/drop! table-key)
-          create? (table/create! table-key column-types primary-key auto-generate overrides)
-          insert? (table/insert! table-key (spec/insert-columns db-spec table-key) data)
-          (not cleanup) (cleanup-include-inserted-keys table-key primary-key))))))
+        (-> db-spec
+            (cond-apply drop? table/drop! table-key)
+            (cond-apply create? table/create! table-key column-types primary-key auto-generate overrides)
+            (cond-apply insert? table/insert! table-key (spec/insert-columns db-spec table-key) data)
+            (cond-apply (not cleanup) cleanup-include-inserted-keys table-key primary-key))))))
 
 (defn table!
   "Create table fixture directly. (see `table` for options)"
