@@ -107,7 +107,7 @@
 (defn cleanup-include
   "Add cleanup conditions."
   [db-spec table column values]
-  (let [vs (if (sequential? values) values [values])]
+  (let [vs (if (coll? values) values [values])]
     (update-meta db-spec [:tables (sql-keyword table) :cleanup]
                  merge-cleanup-conditions (hash-map column vs))))
 

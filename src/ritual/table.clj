@@ -27,7 +27,7 @@
   (let [unknown-mapping (get *type-mapping* :unknown)
         primary-key-name (sqlize primary-key)
         overrides (->> (for [[k vs] override-map]
-                         [(sqlize k) (if (sequential? vs) vs [vs])])
+                         [(sqlize k) (if (coll? vs) vs [vs])])
                        (into {}))]
     (for [[column column-type] column-types
           :let [column-name (sqlize column)]]
@@ -98,7 +98,7 @@
   [db-spec table-key conditions]
   (if (seq conditions)
     (let [conditions (->> (for [[k v] conditions]
-                            (when-let [vs (seq (if (sequential? v) v [v]))]
+                            (when-let [vs (seq (if (coll? v) v [v]))]
                               (vector
                                 (sqlize k)
                                 (clojure.string/join "," (repeat (count vs) "?"))
