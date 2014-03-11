@@ -186,7 +186,7 @@
 
 (let [db (atom (create-derby :core-auto))]
   (drop-if-exists! @db :people)
-  (fact "about auto-generated keys."
+  (fact "about auto-generated columns."
         (swap! db auto-people "people") => truthy
         (let [s (snapshot @db "people")]
           s => map?
@@ -195,4 +195,17 @@
         (let [d (dump @db "people")]
           (vals d) => (has every? (comp integer? :id))
           (map :id (vals d)) => (contains (inserted-keys @db "people")))
-        (swap! db cleanup) => truthy))
+        (swap! db cleanup) => truthy)
+  (fact "about cleanup by auto-generated primary key."
+        (let [db' (auto-people @db "people")
+              s0 (snapshot db' "people")]
+          s0 => map?
+          (count s0) => 2
+          (swap! db auto-people "people") => truthy
+          (let [s1 (snapshot db' "people")]
+            s1 => map?
+            (count s1) => 4
+            s1 => (contains s0))
+          (swap! db cleanup) => truthy
+          (snapshot db' "people") => s0
+          (cleanup db'))))

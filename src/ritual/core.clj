@@ -52,10 +52,11 @@
 (defn- cleanup-include-inserted-keys
   "Add auto-generated IDs to cleanup."
   [db-spec table-key primary-key]
-  (if primary-key
-    (->> (inserted-keys db-spec table-key)
-         (cleanup-include db-spec table-key primary-key))
-    db-spec))
+  (let [tk (sql-keyword table-key)]
+    (if primary-key
+      (->> (inserted-keys db-spec tk)
+           (cleanup-include db-spec tk primary-key))
+      db-spec)))
 
 (defn- cond-apply
   "Apply function to the first parameter and the rest args only if `p?` is true."
@@ -98,7 +99,9 @@
             (cond-apply drop? table/drop! table-key)
             (cond-apply create? table/create! table-key column-types primary-key auto-generate overrides)
             (cond-apply insert? table/insert! table-key (spec/insert-columns db-spec table-key) data)
-            (cond-apply (not cleanup) cleanup-include-inserted-keys table-key primary-key))))))
+            (cond-apply
+              (and primary-key (map? cleanup-conditions) (contains? cleanup-conditions primary-key))
+              cleanup-include-inserted-keys table-key primary-key))))))
 
 (defn table!
   "Create table fixture directly. (see `table` for options)"
@@ -107,6 +110,13 @@
     (f db-spec table-key)))
 
 ;; ## Cleanup
+
+(defn fresh
+  "Remove all data about observed tables/columns from the DB spec."
+  [db-spec]
+  (-> db-spec
+      (vary-meta dissoc :ritual.table/data)
+      (dissoc :ritual.spec/data)))
 
 (defn cleanup
   "Cleanup all table fixtures associated with the given database spec. This will
@@ -122,7 +132,7 @@
             (= cleanup :none) nil
             (= cleanup :clear) (table/clean! db-spec t nil)
             :else (table/clean! db-spec t cleanup))))
-  (vary-meta db-spec dissoc ::spec))
+  (fresh db-spec))
 
 ;; ## Tracing
 
