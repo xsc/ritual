@@ -6,7 +6,9 @@
              [spec :as spec]
              [utils :refer [sql-keyword sqlize]]]
             [clojure.java.jdbc :as jdbc]
-            [potemkin :refer [import-vars]]))
+            [clojure.java.io :as io]
+            [potemkin :refer [import-vars]])
+  (:import [java.io StringReader]))
 
 ;; ## Import API
 
@@ -103,11 +105,35 @@
               (and primary-key (map? cleanup-conditions) (contains? cleanup-conditions primary-key))
               cleanup-include-inserted-keys table-key primary-key))))))
 
-(defn table!
-  "Create table fixture directly. (see `table` for options)"
-  [db-spec table-key & args]
-  (let [f (apply table args)]
-    (f db-spec table-key)))
+;; ## Raw SQ
+
+(defn raw-table
+  "Create table fixture using a single SQL string."
+  [sql & {:keys [primary-key auto-generate wildcard]}]
+  (let [sqls (if (coll? sql)
+               sql
+               (with-open [rdr (io/reader (StringReader. (str sql)))]
+                 (doall (line-seq rdr))))
+        wildcard (or wildcard "__TABLE__")]
+    (assert (some #(>= (.indexOf ^String % wildcard) 0) sqls) "table name wildcard is missing.")
+    (fn [db-spec table-key & {:keys [force? cleanup] :as options}]
+      (let [{:keys [force?] :as options} (merge {:force? false} options)
+            table-create-query (map #(.replace ^String % wildcard (sqlize table-key)) sqls)
+            exists? (table/exists? db-spec table-key)
+            drop? (and exists? force?)
+            create? (or (not exists?) drop?)
+            cleanup-conditions (collect-cleanup-conditions cleanup [] create? primary-key)
+            db-spec (-> db-spec
+                        (spec/add-cleanup-conditions table-key cleanup-conditions)
+                        (spec/set-primary-key table-key primary-key)
+                        (spec/set-auto-generated table-key auto-generate)
+                        (spec/set-options table-key options))]
+        (-> db-spec
+            (cond-apply drop? table/drop! table-key)
+            (cond-apply create? table/import! table-key table-create-query)
+            (cond-apply
+              (and primary-key (map? cleanup-conditions) (contains? cleanup-conditions primary-key))
+              cleanup-include-inserted-keys table-key primary-key))))))
 
 ;; ## Cleanup
 

@@ -209,3 +209,52 @@
           (swap! db cleanup) => truthy
           (snapshot db' "people") => s0
           (cleanup db'))))
+
+;; ## Tests for Import
+
+(def raw-people0
+  (raw-table
+    "CREATE TABLE __TABLE__ (name varchar(255), id integer primary key)"
+    :primary-key :id))
+
+(def raw-people1
+  (raw-table
+    (str
+      "CREATE TABLE __TABLE__ "
+      "(name varchar(255), id integer primary key generated always as identity (start with 1, increment by 1))\n"
+      "INSERT INTO people (name) VALUES ('Me')\n"
+      "INSERT INTO people (name) VALUES ('You')")
+    :primary-key :id))
+
+(def raw-people2
+  (raw-table
+    (vector
+      "CREATE TABLE __T__ (name varchar(255), id integer primary key)"
+      "INSERT INTO people (id,name) VALUES (1, 'Me')"
+      "INSERT INTO people (id,name) VALUES (2, 'You')")
+    :primary-key :id
+    :wildcard "__T__"))
+
+(let [db (atom (create-derby :core-raw))]
+  (drop-if-exists! @db :people)
+  (fact "about necessary wildcards for raw SQL import."
+        (raw-table "CREATE TABLE x (id integer)") => (throws AssertionError #"wildcard is missing"))
+  (fact "about raw SQL import (table only)"
+        (query-count! db "people") => (throws Exception #"does not exist")
+        (swap! db raw-people0 "people") => truthy
+        (query-count! db "people") => 0
+        (swap! db cleanup)
+        (query-count! db "people") => (throws Exception #"does not exist"))
+  (fact "about raw SQL import (based on string with linebreaks)."
+        (query-count! db "people") => (throws Exception #"does not exist")
+        (swap! db raw-people1 "people") => truthy
+        (query-count! db "people") => 2
+        (count (inserted-keys @db "people")) => 2
+        (swap! db cleanup)
+        (query-count! db "people") => (throws Exception #"does not exist"))
+  (fact "about raw SQL import (based on a vector of strings)."
+        (query-count! db "people") => (throws Exception #"does not exist")
+        (swap! db raw-people2 "people") => truthy
+        (query-count! db "people") => 2
+        (swap! db cleanup)
+        (query-count! db "people") => (throws Exception #"does not exist")))

@@ -66,7 +66,7 @@
            :unknown    "blob"}
    :primary-key    "primary key"
    :auto-increment "generated always as identity (start with 1, increment by 1)"
-   :get-generated  vals})
+   :get-generated  #(when (map? %) (vals %))})
 
 (def ^:private mysql-db
   "Data for MySQL databases."

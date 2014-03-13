@@ -2,7 +2,8 @@
   (:require [ritual
              [types :as t]
              [utils :refer [sqlize sql-keyword]]]
-            [clojure.java.jdbc :as jdbc]))
+            [clojure.java.jdbc :as jdbc]
+            [clojure.string :as s]))
 
 ;; ## Check Existence
 
@@ -148,3 +149,17 @@
                (jdbc/execute! db-spec)))
         [0]))
     (jdbc/execute! db-spec [(format "delete from %s" (sqlize table-key))])))
+
+;; ## Import
+
+(defn import!
+  "Import raw SQL queries into the given table."
+  [db-spec table-key sql]
+  (let [f (t/generated-ids-fn)]
+    (->> (jdbc/with-db-transaction [db db-spec]
+           (->> (for [sql-query (if (coll? sql) sql [sql])
+                      :when (not (s/blank? sql-query))]
+                  (jdbc/db-do-prepared-return-keys db sql-query []))
+                (vec)))
+         (mapcat f)
+         (add-inserted-ids db-spec table-key))))
